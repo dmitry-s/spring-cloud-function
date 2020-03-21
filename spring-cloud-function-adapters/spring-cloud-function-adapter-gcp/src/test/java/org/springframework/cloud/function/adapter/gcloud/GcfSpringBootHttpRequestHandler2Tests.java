@@ -44,7 +44,7 @@ import static org.mockito.Mockito.when;
  */
 public class GcfSpringBootHttpRequestHandler2Tests {
 
-	public static final Gson gson = new Gson();
+	private static final Gson gson = new Gson();
 
 	@Test
 	public void testHelloWorldSupplier() throws Exception {
@@ -68,20 +68,21 @@ public class GcfSpringBootHttpRequestHandler2Tests {
 		testFunction(JsonInputConsumer.class, new IncomingRequest("hello"), null);
 	}
 
-
 	private <I, O> void testFunction(Class<?> configurationClass, I input, O expectedOutput) throws Exception {
 		GcfSpringBootHttpRequestHandler2 handler = new GcfSpringBootHttpRequestHandler2(configurationClass);
 
 		HttpRequest request = Mockito.mock(HttpRequest.class);
+
 		if (input != null) {
 			when(request.getReader()).thenReturn(new BufferedReader(new StringReader(gson.toJson(input))));
 		}
 
-		StringWriter writer = new StringWriter();
 		HttpResponse response = Mockito.mock(HttpResponse.class);
+		StringWriter writer = new StringWriter();
 		when(response.getWriter()).thenReturn(new BufferedWriter(writer));
 
 		handler.service(request, response);
+
 		assertThat(writer.toString()).isEqualTo(gson.toJson(expectedOutput));
 	}
 
