@@ -16,33 +16,42 @@
 
 package org.springframework.cloud.function.adapter.gcloud.integration;
 
-import org.junit.ClassRule;
+import java.util.function.Function;
+
+import org.junit.Rule;
 import org.junit.Test;
 
-import org.springframework.boot.test.web.client.TestRestTemplate;
 import org.springframework.cloud.function.adapter.gcloud.GcfSpringBootHttpRequestHandler;
-import org.springframework.http.ResponseEntity;
+import org.springframework.cloud.function.context.config.ContextFunctionCatalogAutoConfiguration;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
+import org.springframework.context.annotation.Import;
 
-import static org.assertj.core.api.Assertions.assertThat;
 
 /**
  * Integration tests for GCF Http Functions.
  *
  * @author Daniel Zou
+ * @author Mike Eltsufin
  */
 public class HttpFunctionIntegrationTest {
 
-	private static final int PORT = 7777;
-
-	@ClassRule
-	public static CloudFunctionServer cloudFunctionServer =
-		new CloudFunctionServer(PORT, GcfSpringBootHttpRequestHandler.class, CloudFunctionMain.class);
+	@Rule
+	public CloudFunctionServer cloudFunctionServer =
+		new CloudFunctionServer(GcfSpringBootHttpRequestHandler.class, CloudFunctionMain.class);
 
 	@Test
 	public void test() {
-		TestRestTemplate testRestTemplate = new TestRestTemplate();
-		ResponseEntity<String> response = testRestTemplate.postForEntity("http://localhost:" + PORT, "hello",
-				String.class);
-		assertThat(response.getBody()).isEqualTo("\"HELLO\"");
+		cloudFunctionServer.test(null, "hello", "HELLO");
+	}
+
+	@Configuration
+	@Import({ContextFunctionCatalogAutoConfiguration.class})
+	protected static class CloudFunctionMain {
+
+		@Bean
+		public Function<String, String> uppercase() {
+			return input -> input.toUpperCase();
+		}
 	}
 }

@@ -69,7 +69,7 @@ public class GcfSpringBootHttpRequestHandler<O>
 		BufferedWriter writer = httpResponse.getWriter();
 		Object result = result(httpRequest, output, httpResponse);
 		if (returnsOutput()) {
-			writer.write(gson.toJson(result));
+			writer.write(result instanceof  String ? (String) result : gson.toJson(result));
 			writer.flush();
 		}
 		httpResponse.setStatusCode(200);

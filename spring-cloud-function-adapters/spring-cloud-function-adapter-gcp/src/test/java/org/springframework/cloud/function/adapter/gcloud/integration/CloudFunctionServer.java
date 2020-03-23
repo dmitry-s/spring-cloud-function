@@ -17,16 +17,27 @@
 package org.springframework.cloud.function.adapter.gcloud.integration;
 
 import com.google.cloud.functions.invoker.runner.Invoker;
+import com.google.gson.Gson;
 import org.junit.rules.ExternalResource;
+
+import org.springframework.boot.test.web.client.TestRestTemplate;
+import org.springframework.http.HttpEntity;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.ResponseEntity;
+
+import static org.assertj.core.api.Assertions.assertThat;
 
 /**
  * Test rule for starting the Cloud Function server.
  *
  * @author Daniel Zou
+ * @author Mike Eltsufin
  */
 public class CloudFunctionServer extends ExternalResource {
 
-	private final int port;
+	private static final Gson gson = new Gson();
+
+	private static int nextPort = 7777;
 
 	private final Class<?> adapterClass;
 
@@ -34,15 +45,15 @@ public class CloudFunctionServer extends ExternalResource {
 
 	private Thread serverThread = null;
 
+	private int port;
+
 	/**
 	 * Initializes the Cloud Function Server rule.
 	 *
-	 * @param port the port to run the server on
 	 * @param adapterClass the Cloud Function adapter class being used
 	 * @param springApplicationMainClass the Spring main class containing function beans
 	 */
-	public CloudFunctionServer(int port, Class<?> adapterClass, Class<?> springApplicationMainClass) {
-		this.port = port;
+	public CloudFunctionServer(Class<?> adapterClass, Class<?> springApplicationMainClass) {
 		this.adapterClass = adapterClass;
 		this.springApplicationMainClass = springApplicationMainClass;
 	}
@@ -54,6 +65,8 @@ public class CloudFunctionServer extends ExternalResource {
 	protected void before() throws InterruptedException {
 		// Spring uses the System property to detect the correct main class.
 		System.setProperty("MAIN_CLASS", springApplicationMainClass.getCanonicalName());
+
+		this.port = nextPort;
 
 		Runnable startServer = () -> {
 			Invoker invoker = new Invoker(
@@ -76,6 +89,10 @@ public class CloudFunctionServer extends ExternalResource {
 
 		this.serverThread = new Thread(startServer);
 		this.serverThread.start();
+
+		CloudFunctionServer.nextPort++;
+
+		Thread.sleep(1000);
 	}
 
 	@Override
@@ -84,4 +101,22 @@ public class CloudFunctionServer extends ExternalResource {
 			this.serverThread.interrupt();
 		}
 	}
+
+	public int getPort() {
+		return port;
+	}
+
+	public <I, O> void test(String function, I request, O expectedResponse) {
+		TestRestTemplate testRestTemplate = new TestRestTemplate();
+
+		HttpHeaders headers = new HttpHeaders();
+		headers.set("spring.function", function);
+
+		ResponseEntity<String> response = testRestTemplate.postForEntity(
+			"http://localhost:" + getPort(),
+			new HttpEntity<>(gson.toJson(request), headers), String.class);
+
+		assertThat(response.getBody()).isEqualTo(gson.toJson(expectedResponse));
+	}
+
 }
