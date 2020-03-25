@@ -55,6 +55,12 @@
 								<transformer implementation="org.apache.maven.plugins.shade.resource.AppendingTransformer">
 									<resource>META-INF/spring.schemas</resource>
 								</transformer>
+								<transformer implementation="org.apache.maven.plugins.shade.resource.ServicesResourceTransformer"/>
+								<transformer implementation="org.apache.maven.plugins.shade.resource.ManifestResourceTransformer">
+									<manifestEntries>
+										<Main-Class>com.example.CloudFunctionMain</Main-Class>
+									</manifestEntries>
+								</transformer>
 							</transformers>
 						</configuration>
 					</execution>
