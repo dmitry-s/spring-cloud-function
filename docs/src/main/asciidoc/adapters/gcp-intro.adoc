@@ -66,7 +66,7 @@ curl http://localhost:8080/ -d "hello"
 As of March 2020, Google Cloud Functions for Java is in Alpha.
 You can get on the https://docs.google.com/forms/d/e/1FAIpQLScC98jGi7CfG0n3UYlj7Xad8XScvZC8-BBOg7Pk3uSZx_2cdQ/viewform[whitelist] to try it out.
 
-First, add the Shade Plugin configuration to generate a fat jar when you run the `mvn package` commaond.
+First, add the Shade Plugin configuration to generate a fat jar when you run the `mvn package` command.
 
 [source, xml]
 ----
