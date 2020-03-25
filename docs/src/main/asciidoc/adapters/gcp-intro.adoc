@@ -121,3 +121,9 @@ gcloud alpha functions deploy function-sample-gcp \
 --source deploy \
 --memory 512MB
 ----
+
+Invoke the HTTP function:
+
+----
+curl https://REGION-PROJECT_ID.cloudfunctions.net/function-sample-gcp -d "hello"
+----
