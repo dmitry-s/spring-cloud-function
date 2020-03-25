@@ -16,35 +16,24 @@
 
 package org.springframework.cloud.function.adapter.gcloud;
 
-import java.io.BufferedReader;
-import java.io.BufferedWriter;
-import java.io.IOException;
-import java.io.OutputStream;
-import java.io.StringReader;
-import java.io.StringWriter;
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.Objects;
-import java.util.Optional;
-import java.util.function.Consumer;
-import java.util.function.Function;
-
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.google.cloud.functions.HttpRequest;
 import com.google.cloud.functions.HttpResponse;
 import com.google.gson.Gson;
 import org.junit.After;
 import org.junit.Test;
 import org.mockito.Mockito;
-
 import org.springframework.cloud.function.context.config.ContextFunctionCatalogAutoConfiguration;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Import;
 import org.springframework.messaging.Message;
 import org.springframework.messaging.support.GenericMessage;
+
+import java.io.*;
+import java.util.*;
+import java.util.function.Consumer;
+import java.util.function.Function;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.when;
@@ -54,14 +43,13 @@ import static org.mockito.Mockito.when;
  */
 public class GcfSpringBootHttpRequestHandlerTests {
 	HttpRequest request = Mockito.mock(HttpRequest.class);
-	HttpResponse response = Mockito.mock(HttpResponse.class);
 
 	private GcfSpringBootHttpRequestHandler<?> handler = null;
 	public static final Gson GSON = new Gson();
 
 	<O> GcfSpringBootHttpRequestHandler<O> handler(Class<?> config) {
-		GcfSpringBootHttpRequestHandler<O> handler =
-			new GcfSpringBootHttpRequestHandler<O>(config);
+		GcfSpringBootHttpRequestHandler<O> handler = new GcfSpringBootHttpRequestHandler<>(config);
+
 		this.handler = handler;
 		return handler;
 	}
@@ -124,6 +112,10 @@ public class GcfSpringBootHttpRequestHandlerTests {
 	@Configuration
 	@Import({ContextFunctionCatalogAutoConfiguration.class})
 	protected static class FunctionMessageBodyConfig {
+		@Bean
+		public ObjectMapper objectMapper() {
+			return new ObjectMapper();
+		}
 
 		@Bean
 		public Function<Message<Foo>, Message<Bar>> function() {
@@ -133,12 +125,17 @@ public class GcfSpringBootHttpRequestHandlerTests {
 					new Bar(foo.getPayload().getValue().toUpperCase()), headers);
 			});
 		}
-
 	}
 
 	@Configuration
 	@Import({ContextFunctionCatalogAutoConfiguration.class})
 	protected static class FunctionMessageEchoReqParametersConfig {
+
+		@Bean
+		public ObjectMapper objectMapper() {
+			return new ObjectMapper();
+		}
+
 
 		@Bean
 		public Function<Message<Void>, Message<Bar>> function() {
@@ -151,7 +148,6 @@ public class GcfSpringBootHttpRequestHandlerTests {
 				return new GenericMessage<>(new Bar("body"), headers);
 			});
 		}
-
 	}
 
 	@Configuration
@@ -159,12 +155,17 @@ public class GcfSpringBootHttpRequestHandlerTests {
 	protected static class FunctionMessageConsumerConfig {
 
 		@Bean
+		public ObjectMapper objectMapper() {
+			return new ObjectMapper();
+		}
+
+		@Bean
 		public Consumer<Message<Foo>> function() {
 			return (foo -> { });
 		}
 	}
 
-	private static class Foo {
+	public static class Foo {
 
 		private String value;
 
@@ -175,23 +176,27 @@ public class GcfSpringBootHttpRequestHandlerTests {
 			this.value = value;
 		}
 
-		public String lowercase() {
-			return this.value.toLowerCase();
-		}
-
-		public String uppercase() {
-			return this.value.toUpperCase();
-		}
-
-		public String getValue() {
-			return this.value;
-		}
-
-		public void setValue(String value) {
-			this.value = value;
-		}
-
+	public String getValue() {
+		return this.value;
 	}
+
+	@Override
+	public boolean equals(Object o) {
+		if (this == o) {
+			return true;
+		}
+		if (o == null || getClass() != o.getClass()) {
+			return false;
+		}
+		Foo foo = (Foo) o;
+		return Objects.equals(value, foo.value);
+	}
+
+	@Override
+	public int hashCode() {
+		return Objects.hash(value);
+	}
+}
 
 	private static class Bar {
 
