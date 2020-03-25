@@ -32,7 +32,7 @@ import org.springframework.cloud.function.context.AbstractSpringFunctionAdapterI
  * @author Dmitry Solomakha
  * @author Mike Eltsufin
  */
-public class GcfSpringBootHttpRequestHandler<O>
+public class GcfSpringBootHttpRequestHandler
 	extends AbstractSpringFunctionAdapterInitializer<HttpRequest> implements HttpFunction {
 
 	private final Gson gson = new Gson();
@@ -65,7 +65,7 @@ public class GcfSpringBootHttpRequestHandler<O>
 
 		Publisher<?> output = this.apply(input);
 
-		O result = this.result(input, output);
+		Object result = this.result(input, output);
 
 		httpResponse.getWriter().write(gson.toJson(result));
 		httpResponse.getWriter().close();
