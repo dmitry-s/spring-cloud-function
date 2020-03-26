@@ -18,6 +18,9 @@ package com.example;
 
 import java.util.function.Function;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.context.annotation.Bean;
@@ -25,12 +28,18 @@ import org.springframework.context.annotation.Bean;
 @SpringBootApplication
 public class CloudFunctionMain {
 
+	private final Logger logger = LoggerFactory.getLogger(CloudFunctionMain.class);
+
 	public static void main(String[] args) {
 		SpringApplication.run(CloudFunctionMain.class, args);
 	}
 
 	@Bean
 	public Function<String, String> function() {
-		return value -> value.toUpperCase();
+		return value -> {
+			logger.info("function was called with this argument: " + value);
+			return value.toUpperCase();
+		};
 	}
+
 }

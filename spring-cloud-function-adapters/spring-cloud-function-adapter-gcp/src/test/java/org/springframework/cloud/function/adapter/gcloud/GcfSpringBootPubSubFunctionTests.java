@@ -16,32 +16,34 @@
 
 package org.springframework.cloud.function.adapter.gcloud;
 
+import java.util.Base64;
+import java.util.HashMap;
+import java.util.function.Consumer;
+
 import com.google.gson.Gson;
 import org.junit.After;
 import org.junit.Test;
+
 import org.springframework.cloud.function.context.config.ContextFunctionCatalogAutoConfiguration;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Import;
 import org.springframework.messaging.Message;
-import org.springframework.messaging.support.GenericMessage;
-
-import java.util.HashMap;
-import java.util.Map;
-import java.util.function.Consumer;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.springframework.cloud.function.adapter.gcloud.GcfSpringBootHttpRequestHandlerTests.*;
+import static org.springframework.cloud.function.adapter.gcloud.GcfSpringBootHttpRequestHandlerOriginalTests.Foo;
 
 /**
  * @author Dmitry Solomakha
  */
-public class GcfSpringBootBackgroundFunctionTests {
-	private GcfSpringBootBackgroundFunctionHandler<?> handler = null;
+public class GcfSpringBootPubSubFunctionTests {
+
+	private GcfSpringBootPubSubFunctionHandler<?> handler = null;
+
 	public static final Gson GSON = new Gson();
 
-	<O> GcfSpringBootBackgroundFunctionHandler<O> handler(Class<?> config) {
-		GcfSpringBootBackgroundFunctionHandler<O> handler = new GcfSpringBootBackgroundFunctionHandler<>(config);
+	<O> GcfSpringBootPubSubFunctionHandler<O> handler(Class<?> config) {
+		GcfSpringBootPubSubFunctionHandler<O> handler = new GcfSpringBootPubSubFunctionHandler<>(config);
 
 		this.handler = handler;
 		return handler;
@@ -49,10 +51,10 @@ public class GcfSpringBootBackgroundFunctionTests {
 
 	@Test
 	public void testWithBody() {
-		GcfSpringBootBackgroundFunctionHandler<Foo> handler = handler(FunctionConfig.class);
+		GcfSpringBootPubSubFunctionHandler<Foo> handler = handler(FunctionConfig.class);
 
 		Foo foo = new Foo("foo");
-		PubSubMessage psMessage = new PubSubMessage(GSON.toJson(foo), null, null, null);
+		PubSubMessage psMessage = new PubSubMessage(toBase64EncodedJson(foo), null, null, null);
 		handler.accept(psMessage, null);
 
 		assertThat(FunctionConfig.argument).isEqualTo(foo);
@@ -60,19 +62,23 @@ public class GcfSpringBootBackgroundFunctionTests {
 
 	@Test
 	public void testWithBodyMessage() {
-		GcfSpringBootBackgroundFunctionHandler<Foo> handler = handler(FunctionMessageConfig.class);
+		GcfSpringBootPubSubFunctionHandler<Foo> handler = handler(FunctionMessageConfig.class);
 
 		Foo foo = new Foo("foo");
 		HashMap<String, String> attributes = new HashMap<>();
 		attributes.put("attribute", "value");
 
-		PubSubMessage psMessage = new PubSubMessage(GSON.toJson(foo), attributes, "id", "2020-02-01");
+		PubSubMessage psMessage = new PubSubMessage(toBase64EncodedJson(foo), attributes, "id", "2020-02-01");
 		handler.accept(psMessage, null);
 
 		assertThat(FunctionMessageConfig.argument.getHeaders().get("messageId")).isEqualTo("id");
 		assertThat(FunctionMessageConfig.argument.getHeaders().get("publishTime")).isEqualTo("2020-02-01");
 		assertThat(FunctionMessageConfig.argument.getHeaders().get("attribute")).isEqualTo("value");
 		assertThat(FunctionMessageConfig.argument.getPayload()).isEqualTo(foo);
+	}
+
+	private String toBase64EncodedJson(Foo foo) {
+		return Base64.getEncoder().encodeToString(GSON.toJson(foo).getBytes());
 	}
 
 	@After
@@ -83,8 +89,9 @@ public class GcfSpringBootBackgroundFunctionTests {
 	}
 
 	@Configuration
-	@Import({ContextFunctionCatalogAutoConfiguration.class})
+	@Import({ ContextFunctionCatalogAutoConfiguration.class })
 	protected static class FunctionConfig {
+
 		static Foo argument;
 
 		@Bean
@@ -93,11 +100,13 @@ public class GcfSpringBootBackgroundFunctionTests {
 				argument = foo;
 			});
 		}
+
 	}
 
 	@Configuration
-	@Import({ContextFunctionCatalogAutoConfiguration.class})
+	@Import({ ContextFunctionCatalogAutoConfiguration.class })
 	protected static class FunctionMessageConfig {
+
 		static Message<Foo> argument;
 
 		@Bean
@@ -106,8 +115,7 @@ public class GcfSpringBootBackgroundFunctionTests {
 				argument = message;
 			});
 		}
+
 	}
+
 }
-
-
-

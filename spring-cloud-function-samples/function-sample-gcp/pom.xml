@@ -28,6 +28,8 @@
 				<version>0.9.1</version>
 				<configuration>
 					<functionTarget>org.springframework.cloud.function.adapter.gcloud.GcfSpringBootHttpRequestHandler</functionTarget>
+<!-- Use this handler for PubSub functions				-->
+<!--					<functionTarget>org.springframework.cloud.function.adapter.gcloud.GcfSpringBootPubSubFunctionHandler</functionTarget>-->
 					<port>8080</port>
 				</configuration>
 			</plugin>
