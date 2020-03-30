@@ -21,25 +21,21 @@ import com.google.cloud.functions.HttpRequest;
 import com.google.cloud.functions.HttpResponse;
 import com.google.gson.Gson;
 import org.reactivestreams.Publisher;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 import reactor.core.publisher.Mono;
 
 import org.springframework.cloud.function.context.AbstractSpringFunctionAdapterInitializer;
 
 /**
- * Implementation of {@link HttpFunction} for Google Cloud Function (GCF). This is the
- * Spring Cloud Function adapter for GCF HTTP function.
+ * Implementation of {@link HttpFunction} for Google Cloud Function (GCF).
+ * This is the Spring Cloud Function adapter for GCF HTTP function.
  *
  * @author Dmitry Solomakha
  * @author Mike Eltsufin
  */
-public class GcfSpringBootHttpRequestHandler extends AbstractSpringFunctionAdapterInitializer<HttpRequest>
-		implements HttpFunction {
+public class GcfSpringBootHttpRequestHandler
+	extends AbstractSpringFunctionAdapterInitializer<HttpRequest> implements HttpFunction {
 
 	private final Gson gson = new Gson();
-
-	private static final Logger log = LoggerFactory.getLogger(GcfSpringBootHttpRequestHandler.class);
 
 	public GcfSpringBootHttpRequestHandler() {
 		super();
@@ -50,12 +46,12 @@ public class GcfSpringBootHttpRequestHandler extends AbstractSpringFunctionAdapt
 	}
 
 	/**
-	 * The implementation of a GCF {@link HttpFunction} that will be used as the
-	 * entrypoint from GCF.
+	 * The implementation of a GCF {@link HttpFunction} that will be used as the entrypoint from GCF.
 	 */
 	@Override
 	public void service(HttpRequest httpRequest, HttpResponse httpResponse) throws Exception {
-		Thread.currentThread().setContextClassLoader(GcfSpringBootHttpRequestHandler.class.getClassLoader());
+		Thread.currentThread()
+			.setContextClassLoader(GcfSpringBootHttpRequestHandler.class.getClassLoader());
 
 		initialize(httpRequest);
 
@@ -74,5 +70,4 @@ public class GcfSpringBootHttpRequestHandler extends AbstractSpringFunctionAdapt
 		httpResponse.getWriter().write(gson.toJson(result));
 		httpResponse.getWriter().close();
 	}
-
 }
