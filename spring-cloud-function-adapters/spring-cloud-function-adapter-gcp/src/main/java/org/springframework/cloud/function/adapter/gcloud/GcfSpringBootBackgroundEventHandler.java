@@ -18,16 +18,13 @@ package org.springframework.cloud.function.adapter.gcloud;
 
 import com.google.cloud.functions.Context;
 import com.google.cloud.functions.RawBackgroundFunction;
+import com.google.gson.Gson;
 import org.reactivestreams.Publisher;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import reactor.core.publisher.Mono;
 
 import org.springframework.cloud.function.context.AbstractSpringFunctionAdapterInitializer;
-
-import com.google.cloud.functions.HttpFunction;
-import com.google.cloud.functions.HttpRequest;
-import com.google.cloud.functions.HttpResponse;
-import com.google.gson.Gson;
-
-import reactor.core.publisher.Mono;
 
 /**
  * Implementation of {@link RawBackgroundFunction} for Google Cloud Function (GCF). This
@@ -37,6 +34,8 @@ import reactor.core.publisher.Mono;
  */
 public class GcfSpringBootBackgroundEventHandler extends AbstractSpringFunctionAdapterInitializer<Context>
 		implements RawBackgroundFunction {
+
+	private static final Logger log = LoggerFactory.getLogger(GcfSpringBootBackgroundEventHandler.class);
 
 	private final Gson gson = new Gson();
 
@@ -66,7 +65,14 @@ public class GcfSpringBootBackgroundEventHandler extends AbstractSpringFunctionA
 			input = Mono.just(gson.fromJson(json, getInputType()));
 		}
 
-		this.apply(input);
+		Publisher<?> output = this.apply(input);
+
+		Object result = this.result(input, output);
+
+		if (result != null) {
+			log.info("Dropping background function result: " + gson.toJson(result));
+		}
+
 	}
 
 }
