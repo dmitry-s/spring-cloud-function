@@ -37,7 +37,7 @@ public class GcfSpringBootBackgroundEventHandler extends AbstractSpringFunctionA
 
 	private static final Logger log = LoggerFactory.getLogger(GcfSpringBootBackgroundEventHandler.class);
 
-	private final Gson gson = new Gson();
+	private static final Gson gson = new Gson();
 
 	public GcfSpringBootBackgroundEventHandler() {
 		super();
