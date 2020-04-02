@@ -20,12 +20,15 @@ package org.springframework.cloud.function.context.catalog;
 import java.io.Serializable;
 import java.lang.reflect.Field;
 import java.nio.charset.StandardCharsets;
+import java.util.Date;
 import java.util.List;
 import java.util.Map;
 import java.util.function.Consumer;
 import java.util.function.Function;
 import java.util.function.Supplier;
+import java.util.stream.Collectors;
 
+import org.junit.Before;
 import org.junit.Ignore;
 import org.junit.Test;
 import reactor.core.publisher.Flux;
@@ -38,16 +41,23 @@ import org.springframework.boot.autoconfigure.EnableAutoConfiguration;
 import org.springframework.boot.builder.SpringApplicationBuilder;
 import org.springframework.cloud.function.context.FunctionCatalog;
 import org.springframework.cloud.function.context.catalog.BeanFactoryAwareFunctionRegistry.FunctionInvocationWrapper;
+import org.springframework.cloud.function.context.catalog.FunctionTypeUtilsTests.ReactiveFunction;
 import org.springframework.context.ApplicationContext;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.lang.Nullable;
 import org.springframework.messaging.Message;
 import org.springframework.messaging.MessageHeaders;
+import org.springframework.messaging.converter.AbstractMessageConverter;
+import org.springframework.messaging.converter.MessageConverter;
 import org.springframework.messaging.support.GenericMessage;
 import org.springframework.messaging.support.MessageBuilder;
 import org.springframework.stereotype.Component;
+import org.springframework.util.CollectionUtils;
+import org.springframework.util.MimeType;
 import org.springframework.util.ReflectionUtils;
 
+import static java.util.Collections.singletonList;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
@@ -69,6 +79,11 @@ public class BeanFactoryAwareFunctionRegistryTests {
 		return catalog;
 	}
 
+	@Before
+	public void before() {
+		System.clearProperty("spring.cloud.function.definition");
+	}
+
 	@Test
 	public void testDefaultLookup() throws Exception {
 		FunctionCatalog catalog = this.configureCatalog();
@@ -76,6 +91,7 @@ public class BeanFactoryAwareFunctionRegistryTests {
 		assertThat(function).isNull();
 		//==
 		System.setProperty("spring.cloud.function.definition", "uppercase");
+		catalog = this.configureCatalog();
 		function = catalog.lookup("");
 		assertThat(function).isNotNull();
 		Field field = ReflectionUtils.findField(FunctionInvocationWrapper.class, "composed");
@@ -83,6 +99,7 @@ public class BeanFactoryAwareFunctionRegistryTests {
 		assertThat(((boolean) field.get(function))).isFalse();
 		//==
 		System.setProperty("spring.cloud.function.definition", "uppercase|uppercaseFlux");
+		catalog = this.configureCatalog();
 		function = catalog.lookup("", "application/json");
 		Function<Flux<String>, Flux<Message<String>>> typedFunction = (Function<Flux<String>, Flux<Message<String>>>) function;
 		Object blockFirst = typedFunction.apply(Flux.just("hello")).blockFirst();
@@ -304,10 +321,10 @@ public class BeanFactoryAwareFunctionRegistryTests {
 	@Test
 	public void SCF_GH_409ConfigurationTests() {
 		FunctionCatalog catalog = this.configureCatalog(SCF_GH_409ConfigurationAsSupplier.class);
-		assertThat((Object) catalog.lookup("")).isNull();
+		assertThat((Function) catalog.lookup("")).isNull();
 
 		catalog = this.configureCatalog(SCF_GH_409ConfigurationAsFunction.class);
-		assertThat((Object) catalog.lookup("")).isNull();
+		assertThat((Function) catalog.lookup("")).isNull();
 	}
 
 	@Test
@@ -328,6 +345,211 @@ public class BeanFactoryAwareFunctionRegistryTests {
 		f.setAccessible(true);
 		boolean composed = (boolean) f.get(function);
 		assertThat(composed).isFalse();
+	}
+
+	@SuppressWarnings("unchecked")
+	@Test
+	public void byteArrayNoSpecialHandling() throws Exception {
+		FunctionCatalog catalog = this.configureCatalog(ByteArrayFunction.class);
+		FunctionInvocationWrapper function = catalog.lookup("beanFactoryAwareFunctionRegistryTests.ByteArrayFunction", "application/json");
+		assertThat(function).isNotNull();
+		Message<byte[]> result = (Message<byte[]>) function.apply(MessageBuilder.withPayload("hello".getBytes()).setHeader(MessageHeaders.CONTENT_TYPE, "application/octet-stream").build());
+		assertThat(result.getPayload()).isEqualTo("\"b2xsZWg=\"".getBytes());
+	}
+
+	@Test
+	public void testMultipleValuesInOutputHandling() throws Exception {
+		FunctionCatalog catalog = this.configureCatalog(CollectionOutConfiguration.class);
+		FunctionInvocationWrapper function = catalog.lookup("parseToList", "application/json");
+		assertThat(function).isNotNull();
+		Object result = function.apply(MessageBuilder.withPayload("1, 2, 3".getBytes()).setHeader(MessageHeaders.CONTENT_TYPE, "text/plain").build());
+		assertThat(result instanceof Message).isTrue();
+
+		function = catalog.lookup("parseToListOfMessages", "application/json");
+		assertThat(function).isNotNull();
+		result = function.apply(MessageBuilder.withPayload("1, 2, 3".getBytes()).setHeader(MessageHeaders.CONTENT_TYPE, "text/plain").build());
+		assertThat(result instanceof Message).isFalse();
+	}
+
+	/**
+	 * The following two tests test the fallback mechanism when an accept header has several values.
+	 * The function produces Integer, which cannot be serialized by the default converter supporting text/plain
+	 * (StringMessageConverter) but can by the one supporting application/json, which comes second.
+	 */
+	@Test
+	public void testMultipleOrderedAcceptValues() throws Exception {
+		FunctionCatalog catalog = this.configureCatalog(MultipleOrderedAcceptValuesConfiguration.class);
+		Function<String, Message<byte[]>> function = catalog.lookup("beanFactoryAwareFunctionRegistryTests.MultipleOrderedAcceptValuesConfiguration", "text/plain,application/json");
+		assertThat(function).isNotNull();
+		Message<byte[]> result = function.apply("hello");
+		assertThat(result.getPayload()).isEqualTo("5".getBytes("UTF-8"));
+	}
+
+	@Test
+	public void testMultipleOrderedAcceptValuesMessageOutput() throws Exception {
+		FunctionCatalog catalog = this.configureCatalog(MultipleOrderedAcceptValuesAsMessageOutputConfiguration.class);
+		Function<String, Message<byte[]>> function = catalog.lookup(
+				"beanFactoryAwareFunctionRegistryTests.MultipleOrderedAcceptValuesAsMessageOutputConfiguration",
+				"text/plain,application/json");
+		assertThat(function).isNotNull();
+		Message<byte[]> result = function.apply("hello");
+		assertThat(result.getPayload()).isEqualTo("5".getBytes("UTF-8"));
+	}
+
+	@SuppressWarnings("unchecked")
+	@Test
+	public void testSerializationWithCompatibleWildcardSubtypeAcceptHeader() {
+		FunctionCatalog catalog = this.configureCatalog(NegotiatingMessageConverterConfiguration.class);
+		FunctionInvocationWrapper function = catalog.lookup("echo", "text/*");
+
+		Message<Tuple2<String, String>> tupleResult = (Message<Tuple2<String, String>>) function.apply(MessageBuilder
+				.withPayload(Tuples.of("bonjour", "monde"))
+				.setHeader(MessageHeaders.CONTENT_TYPE, MimeType.valueOf("text/csv"))
+				.build()
+		);
+
+		assertThat(tupleResult.getHeaders().get(MessageHeaders.CONTENT_TYPE)).isEqualTo(MimeType.valueOf("text/csv"));
+		assertThat(tupleResult.getHeaders().get("accept")).isNull();
+
+		Message<Date> dateResult = (Message<Date>) function.apply(MessageBuilder
+				.withPayload(123)
+				.setHeader(MessageHeaders.CONTENT_TYPE, MimeType.valueOf("text/integer"))
+				.build()
+		);
+
+		assertThat(dateResult.getHeaders().get(MessageHeaders.CONTENT_TYPE)).isEqualTo(MimeType.valueOf("text/integer"));
+		assertThat(dateResult.getHeaders().get("accept")).isNull();
+	}
+
+	@SuppressWarnings({ "unchecked", "rawtypes" })
+	@Test
+	public void testWithComplexHierarchyAndTypeConversion() {
+		FunctionCatalog catalog = this.configureCatalog(ReactiveFunctionImpl.class);
+		Function<Object, Flux> f = catalog.lookup("");
+		assertThat(f.apply(new GenericMessage("23")).blockFirst()).isEqualTo(23);
+		assertThat(f.apply(Flux.just("25")).blockFirst()).isEqualTo(25);
+		assertThat(f.apply(Flux.just(25)).blockFirst()).isEqualTo(25);
+	}
+
+	public interface ReactiveFunction<S, T> extends Function<Flux<S>, Flux<T>> {
+
+	}
+
+	@Component
+	@EnableAutoConfiguration
+	public static class ReactiveFunctionImpl implements ReactiveFunction<String, Integer> {
+		@Override
+		public Flux<Integer> apply(Flux<String> inFlux) {
+			return inFlux.map(v -> Integer.parseInt(v));
+		}
+	}
+
+	@SuppressWarnings("unchecked")
+	@EnableAutoConfiguration
+	public static class CollectionOutConfiguration {
+
+		@Bean
+		public Function<String, List<String>> parseToList() {
+			return v -> CollectionUtils.arrayToList(v.split(","));
+		}
+
+		@Bean
+		public Function<String, List<Message<String>>> parseToListOfMessages() {
+			return v -> {
+				List<Message<String>> list = (List<Message<String>>) CollectionUtils.arrayToList(v.split(",")).stream()
+						.map(value -> MessageBuilder.withPayload(value).build()).collect(Collectors.toList());
+				return list;
+			};
+		}
+	}
+
+	@EnableAutoConfiguration
+	public static class NegotiatingMessageConverterConfiguration {
+
+		@Bean
+		public Function<String, String> echo() {
+			return v -> v;
+		}
+
+		@Bean
+		public MessageConverter messageConverterA() {
+			return new ConverterA();
+		}
+
+		@Bean
+		public MessageConverter messageConverterB() {
+			return new ConverterB();
+		}
+
+
+		public static class ConverterB extends ConverterA {
+			ConverterB() {
+				super("text/integer");
+			}
+
+			@Override
+			protected Object convertFromInternal(
+					Message<?> message, Class<?> targetClass, @Nullable Object conversionHint) {
+				return message.getPayload().toString();
+			}
+
+			@Override
+			public Object convertToInternal(Object rawPayload, MessageHeaders headers, Object conversionHint) {
+				return Integer.parseInt((String) rawPayload);
+			}
+
+			@Override
+			protected boolean canConvertFrom(Message<?> message, @Nullable Class<?> targetClass) {
+				return supportsMimeType(message.getHeaders()) && String.class.isAssignableFrom(targetClass)
+						&& message.getPayload() instanceof Integer;
+			}
+
+			@Override
+			protected boolean canConvertTo(Object payload, @Nullable MessageHeaders headers) {
+				return payload instanceof String;
+			}
+		}
+
+		private static class ConverterA extends AbstractMessageConverter {
+
+			ConverterA() {
+				this("text/csv");
+			}
+
+			ConverterA(String mimeType) {
+				super(singletonList(MimeType.valueOf(mimeType)));
+			}
+
+			@Override
+			protected Object convertFromInternal(
+					Message<?> message, Class<?> targetClass, @Nullable Object conversionHint) {
+				Tuple2<String, String> payload = (Tuple2<String, String>) message.getPayload();
+
+				String convertedPayload = payload.getT1() + "," + payload.getT2();
+				return convertedPayload;
+			}
+
+			@Override
+			public Object convertToInternal(Object rawPayload, MessageHeaders headers, Object conversionHint) {
+				return Tuples.fromArray(((String) rawPayload).split(","));
+			}
+
+			@Override
+			protected boolean canConvertFrom(Message<?> message, @Nullable Class<?> targetClass) {
+				return supportsMimeType(message.getHeaders()) && String.class.isAssignableFrom(targetClass)
+						&& message.getPayload() instanceof Tuple2;
+			}
+
+			@Override
+			protected boolean canConvertTo(Object payload, @Nullable MessageHeaders headers) {
+				return payload instanceof String && ((String) payload).split(",").length == 2;
+			}
+
+			@Override
+			protected boolean supports(Class<?> clazz) {
+				throw new UnsupportedOperationException();
+			}
+		}
 	}
 
 	@EnableAutoConfiguration
@@ -526,9 +748,6 @@ public class BeanFactoryAwareFunctionRegistryTests {
 				// TODO Auto-generated method stub
 				return null;
 			}
-
-
-
 		}
 	}
 
@@ -568,6 +787,44 @@ public class BeanFactoryAwareFunctionRegistryTests {
 		@Override
 		public String apply(String t) {
 			return t;
+		}
+
+	}
+
+	@EnableAutoConfiguration
+	@Configuration
+	@Component
+	public static class ByteArrayFunction implements Function<byte[], byte[]> {
+
+		@Override
+		public byte[] apply(byte[] bytes) {
+			byte[] result = new byte[bytes.length];
+			for (int i = 0; i < bytes.length; i++) {
+				result[i] = bytes[bytes.length - i - 1];
+			}
+			return result;
+		}
+	}
+
+	@EnableAutoConfiguration
+	@Configuration
+	@Component
+	public static class MultipleOrderedAcceptValuesConfiguration implements Function<String, Integer> {
+
+		@Override
+		public Integer apply(String t) {
+			return t.length();
+		}
+	}
+
+	@EnableAutoConfiguration
+	@Configuration
+	@Component
+	public static class MultipleOrderedAcceptValuesAsMessageOutputConfiguration implements Function<String, Message<Integer>> {
+
+		@Override
+		public Message<Integer> apply(String t) {
+			return MessageBuilder.withPayload(t.length()).build();
 		}
 
 	}

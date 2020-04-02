@@ -27,8 +27,6 @@ import java.util.stream.Collectors;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.google.gson.Gson;
 
-import org.springframework.boot.autoconfigure.condition.AnyNestedCondition;
-import org.springframework.boot.autoconfigure.condition.ConditionalOnBean;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
@@ -40,19 +38,19 @@ import org.springframework.cloud.function.context.catalog.BeanFactoryAwareFuncti
 import org.springframework.cloud.function.context.catalog.FunctionInspector;
 import org.springframework.cloud.function.json.GsonMapper;
 import org.springframework.cloud.function.json.JacksonMapper;
+import org.springframework.cloud.function.json.JsonMapper;
 import org.springframework.context.ConfigurableApplicationContext;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.ComponentScan;
 import org.springframework.context.annotation.ComponentScan.Filter;
-import org.springframework.context.annotation.Conditional;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.FilterType;
 import org.springframework.core.convert.converter.GenericConverter;
 import org.springframework.core.convert.support.ConfigurableConversionService;
 import org.springframework.lang.Nullable;
+import org.springframework.messaging.converter.AbstractMessageConverter;
 import org.springframework.messaging.converter.ByteArrayMessageConverter;
 import org.springframework.messaging.converter.CompositeMessageConverter;
-import org.springframework.messaging.converter.MappingJackson2MessageConverter;
 import org.springframework.messaging.converter.MessageConverter;
 import org.springframework.messaging.converter.StringMessageConverter;
 import org.springframework.util.CollectionUtils;
@@ -73,8 +71,7 @@ public class ContextFunctionCatalogAutoConfiguration {
 	static final String PREFERRED_MAPPER_PROPERTY = "spring.http.converters.preferred-json-mapper";
 
 	@Bean
-	public FunctionRegistry functionCatalog(List<MessageConverter> messageConverters, @Nullable ObjectMapper objectMapper,
-			ConfigurableApplicationContext context) {
+	public FunctionRegistry functionCatalog(List<MessageConverter> messageConverters, JsonMapper jsonMapper, ConfigurableApplicationContext context) {
 		ConfigurableConversionService conversionService = (ConfigurableConversionService) context.getBeanFactory().getConversionService();
 		Map<String, GenericConverter> converters = context.getBeansOfType(GenericConverter.class);
 		for (GenericConverter converter : converters.values()) {
@@ -83,13 +80,11 @@ public class ContextFunctionCatalogAutoConfiguration {
 
 		CompositeMessageConverter messageConverter = null;
 		List<MessageConverter> mcList = new ArrayList<>();
-		boolean addDefaultConverters = true;
 
 		if (!CollectionUtils.isEmpty(messageConverters)) {
 			for (MessageConverter mc : messageConverters) {
 				if (mc instanceof CompositeMessageConverter) {
 					mcList.addAll(((CompositeMessageConverter) mc).getConverters());
-					addDefaultConverters = false;
 				}
 				else {
 					mcList.add(mc);
@@ -98,17 +93,17 @@ public class ContextFunctionCatalogAutoConfiguration {
 		}
 
 		mcList = mcList.stream()
-				.filter(c -> isConverterEligible(c)).collect(Collectors.toList());
-		if (addDefaultConverters) {
-			if (objectMapper == null) {
-				objectMapper = new ObjectMapper();
-			}
-			MappingJackson2MessageConverter jsonConverter = new MappingJackson2MessageConverter();
-			jsonConverter.setObjectMapper(objectMapper);
-			mcList.add(jsonConverter);
-			mcList.add(new ByteArrayMessageConverter());
-			mcList.add(new StringMessageConverter());
-		}
+				.filter(c -> isConverterEligible(c))
+				.map(converter -> {
+					return converter instanceof AbstractMessageConverter
+							? NegotiatingMessageConverterWrapper.wrap((AbstractMessageConverter) converter)
+									: converter;
+				})
+				.collect(Collectors.toList());
+		mcList.add(NegotiatingMessageConverterWrapper.wrap(new JsonMessageConverter(jsonMapper)));
+		mcList.add(NegotiatingMessageConverterWrapper.wrap(new ByteArrayMessageConverter()));
+		mcList.add(NegotiatingMessageConverterWrapper.wrap(new StringMessageConverter()));
+
 		if (!CollectionUtils.isEmpty(mcList)) {
 			messageConverter = new CompositeMessageConverter(mcList);
 		}
@@ -142,32 +137,16 @@ public class ContextFunctionCatalogAutoConfiguration {
 
 	}
 
-	private static class PreferGsonOrMissingJacksonCondition extends AnyNestedCondition {
-
-		PreferGsonOrMissingJacksonCondition() {
-			super(ConfigurationPhase.REGISTER_BEAN);
-		}
-
-		@ConditionalOnProperty(name = PREFERRED_MAPPER_PROPERTY, havingValue = "gson", matchIfMissing = false)
-		static class GsonPreferred {
-
-		}
-
-		@ConditionalOnMissingBean(ObjectMapper.class)
-		static class JacksonMissing {
-
-		}
-
-	}
-
 	@Configuration(proxyBeanMethods = false)
 	@ConditionalOnClass(Gson.class)
-	@ConditionalOnBean(Gson.class)
-	@Conditional(PreferGsonOrMissingJacksonCondition.class)
+	@ConditionalOnProperty(name = PREFERRED_MAPPER_PROPERTY, havingValue = "gson", matchIfMissing = false)
 	protected static class GsonConfiguration {
 
 		@Bean
-		public GsonMapper jsonMapper(Gson gson) {
+		public GsonMapper jsonMapper(@Nullable Gson gson) {
+			if (gson == null) {
+				gson = new Gson();
+			}
 			return new GsonMapper(gson);
 		}
 
@@ -175,13 +154,14 @@ public class ContextFunctionCatalogAutoConfiguration {
 
 	@Configuration(proxyBeanMethods = false)
 	@ConditionalOnClass(ObjectMapper.class)
-	@ConditionalOnBean(ObjectMapper.class)
-	@ConditionalOnProperty(name = ContextFunctionCatalogAutoConfiguration.PREFERRED_MAPPER_PROPERTY, //
-			havingValue = "jackson", matchIfMissing = true)
+	@ConditionalOnProperty(name = PREFERRED_MAPPER_PROPERTY, havingValue = "jackson", matchIfMissing = true)
 	protected static class JacksonConfiguration {
 
 		@Bean
-		public JacksonMapper jsonMapper(ObjectMapper mapper) {
+		public JacksonMapper jsonMapper(@Nullable ObjectMapper mapper) {
+			if (mapper == null) {
+				mapper = new ObjectMapper();
+			}
 			return new JacksonMapper(mapper);
 		}
 

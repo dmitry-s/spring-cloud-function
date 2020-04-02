@@ -19,7 +19,6 @@ package org.springframework.cloud.function.context.catalog;
 
 import java.lang.reflect.ParameterizedType;
 import java.lang.reflect.Type;
-import java.sql.Date;
 import java.util.List;
 import java.util.Map;
 import java.util.function.Consumer;
@@ -132,26 +131,12 @@ public class FunctionTypeUtilsTests {
 		assertThat(type.getInputType()).isAssignableFrom(String.class);
 	}
 
-//	@Test
-//	public void testInputTypeByIndex() throws Exception {
-//		Type functionType = getReturnType("function");
-//		Type inputType = FunctionTypeUtils.getInputType(functionType, 0);
-//		assertThat(inputType.getTypeName()).isEqualTo(String.class.getName());
-//		inputType = FunctionTypeUtils.getInputType(functionType, 1);
-//		assertThat(inputType.getTypeName()).isEqualTo(Integer.class.getName());
-//
-//		functionType = getReturnType("multiInputOutputPublisherFunction");
-//		inputType = FunctionTypeUtils.getInputType(functionType, 0);
-//		System.out.println("Reactive: " + FunctionTypeUtils.isReactive(inputType));
-//		System.out.println("Reactive: " + FunctionTypeUtils.getPublisherType(inputType));
-//		System.out.println("Reactive: " + FunctionTypeUtils.getImmediateGenericType(inputType, 0));
-//		System.out.println(inputType);
-//
-//		functionType = getReturnType("typelessFunction");
-//		inputType = FunctionTypeUtils.getInputType(functionType, 0);
-//		System.out.println(inputType);
-//	}
-
+	@Test
+	public void testWithComplexHierarchy() {
+		FunctionType type = FunctionType.of(FunctionTypeUtils.discoverFunctionTypeFromClass(ReactiveFunctionImpl.class));
+		assertThat(String.class).isAssignableFrom(type.getInputType());
+		assertThat(Integer.class).isAssignableFrom(type.getOutputType());
+	}
 
 	private static Function<String, Integer> function() {
 		return null;
@@ -208,25 +193,37 @@ public class FunctionTypeUtilsTests {
 
 	//============
 
-	private interface MessageFunction<T> extends Function<Message<String>, Message<String>> {
+	private interface MessageFunction extends Function<Message<String>, Message<String>> {
 
 	}
 
-	private interface MyMessageFunction extends MessageFunction<Date> {
+	private interface MyMessageFunction extends MessageFunction {
 
 	}
 
-	private interface MessageConsumer<T> extends Consumer<Message<String>> {
+	private interface MessageConsumer extends Consumer<Message<String>> {
 
 	}
 
-	private interface MyMessageConsumer extends MessageConsumer<Date> {
+	private interface MyMessageConsumer extends MessageConsumer {
 
 	}
 
 	public static class SimpleConsumer implements Consumer<Flux<Message<String>>> {
 		@Override
 		public void accept(Flux<Message<String>> messageFlux) {
+		}
+	}
+
+	public interface ReactiveFunction<S, T> extends Function<Flux<S>, Flux<T>> {
+
+	}
+
+	public static class ReactiveFunctionImpl implements ReactiveFunction<String, Integer> {
+
+		@Override
+		public Flux<Integer> apply(Flux<String> inFlux) {
+			return inFlux.map(v -> Integer.parseInt(v));
 		}
 	}
 }
